@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
 import time
-import undetected_chromedriver as uc
+import chromedriver_autoinstaller
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
+import os
 
 app = Flask(__name__)
 
@@ -13,12 +16,17 @@ def scrape_alltrails():
     if not url:
         return jsonify({"error": "Missing 'url'"}), 400
 
-    options = uc.ChromeOptions()
+    # Install matching ChromeDriver
+    chromedriver_autoinstaller.install()
+
+    # Setup Chrome in headless mode
+    options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
-    driver = uc.Chrome(options=options)
+    # Launch the driver
+    driver = webdriver.Chrome(options=options)
 
     try:
         driver.get(url)
@@ -29,9 +37,12 @@ def scrape_alltrails():
 
         while clicks < max_clicks:
             try:
-                btn = driver.find_element(By.CSS_SELECTOR, "div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x")
-                driver.execute_script("arguments[0].scrollIntoView();", btn)
-                driver.execute_script("arguments[0].click();", btn)
+                show_more_btn = driver.find_element(
+                    By.CSS_SELECTOR,
+                    "div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x"
+                )
+                driver.execute_script("arguments[0].scrollIntoView();", show_more_btn)
+                driver.execute_script("arguments[0].click();", show_more_btn)
                 clicks += 1
                 time.sleep(10)
             except Exception:
@@ -53,5 +64,7 @@ def scrape_alltrails():
     finally:
         driver.quit()
 
+# Support dynamic port for Render
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
