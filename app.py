@@ -17,7 +17,10 @@ app = Flask(__name__)
 def scrape_alltrails():
     data = request.get_json()
     url = data.get("url")
+    print("🔍 Scraping URL:", url)
+
     if not url:
+        print("❌ Missing 'url' in request")
         return jsonify({"error": "Missing 'url' in request body"}), 400
 
     initial_results = 10
@@ -28,7 +31,6 @@ def scrape_alltrails():
         browser = p.chromium.launch(headless=True, args=[
             "--disable-blink-features=AutomationControlled"
         ])
-
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800},
@@ -51,43 +53,49 @@ def scrape_alltrails():
                 for part in text_parts:
                     if part.isdigit():
                         max_results = int(part)
+                        break
+            print("📊 Max results detected:", max_results)
 
-            # Calculate how many times to click
             if max_results > 0 and max_results > initial_results:
                 max_clicks = math.ceil((max_results - initial_results) / results_per_click)
             else:
                 max_clicks = 0
+            print("🔁 Clicks needed:", max_clicks)
 
-            # Click the Show More button if needed
             clicks = 0
             while clicks < max_clicks:
-                try:
-                    btn = page.query_selector("div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x")
-                    if btn:
-                        btn.scroll_into_view_if_needed()
-                        btn.click()
-                        clicks += 1
-                        time.sleep(10)
-                    else:
-                        break
-                except:
+                btn = page.query_selector("div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x")
+                if btn:
+                    print(f"🖱 Clicking Show More ({clicks + 1}/{max_clicks})")
+                    btn.scroll_into_view_if_needed()
+                    btn.click()
+                    clicks += 1
+                    time.sleep(10)
+                else:
+                    print("⚠️ Show More button not found")
                     break
 
             # Extract links
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
             result_divs = soup.find_all("div", class_=lambda x: x and x.startswith("TopResults_resultCardContent"))
+            print(f"🔎 Found {len(result_divs)} result cards")
+
             for div in result_divs:
                 a_tag = div.find("a", href=True)
                 if a_tag:
                     links.append(a_tag["href"])
 
+            print(f"✅ Total links extracted: {len(links)}")
+
         except Exception as e:
+            print("💥 Error during scraping:", str(e))
             return jsonify({"error": str(e)}), 500
         finally:
             browser.close()
 
     return jsonify({"links": links})
+
 
 
 if __name__ == "__main__":
