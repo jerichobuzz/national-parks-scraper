@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: alltrails-api
+    name: alltrails-scraper
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: playwright install && python app.py
+    plan: free
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10
-    autoDeploy: true
+        value: 3.11
