@@ -94,15 +94,18 @@ def scrape_alltrails():
         finally:
             browser.close()
 
+    html_snapshot = page.content()
     return jsonify({
-    "links": links,
-    "debug": {
-        "max_results": max_results,
-        "show_more_clicks": clicks,
-        "trail_divs_found": len(result_divs),
-        "url": url
+        "links": links,
+        "debug": {
+            "max_results": max_results,
+            "show_more_clicks": clicks,
+            "trail_divs_found": len(result_divs),
+            "url": url,
+            "html_snippet": html_snapshot[:12000]  # optional: limit to first 2k chars
         }
     })
+
 
 
 
