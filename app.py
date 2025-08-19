@@ -94,7 +94,16 @@ def scrape_alltrails():
         finally:
             browser.close()
 
-    return jsonify({"links": links})
+    return jsonify({
+    "links": links,
+    "debug": {
+        "max_results": max_results,
+        "show_more_clicks": clicks,
+        "trail_divs_found": len(result_divs),
+        "url": url
+        }
+    })
+
 
 
 
