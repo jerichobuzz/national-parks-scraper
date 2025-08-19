@@ -1,70 +1,87 @@
-from flask import Flask, request, jsonify
+import math
 import time
-import chromedriver_autoinstaller
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+from flask import Flask, request, jsonify
 from bs4 import BeautifulSoup
-import os
+from playwright.sync_api import sync_playwright
 
 app = Flask(__name__)
 
 @app.route("/scrape-alltrails", methods=["POST"])
 def scrape_alltrails():
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json()
     url = data.get("url")
     if not url:
-        return jsonify({"error": "Missing 'url'"}), 400
+        return jsonify({"error": "Missing 'url' in request body"}), 400
 
-    # Install matching ChromeDriver
-    chromedriver_autoinstaller.install()
+    initial_results = 10
+    results_per_click = 10
+    links = []
 
-    # Setup Chrome in headless mode
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=[
+            "--disable-blink-features=AutomationControlled"
+        ])
 
-    # Launch the driver
-    driver = webdriver.Chrome(options=options)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+            timezone_id="America/New_York",
+            geolocation={"latitude": 40.7128, "longitude": -74.0060},
+            permissions=["geolocation"],
+        )
 
-    try:
-        driver.get(url)
-        time.sleep(5)
+        page = context.new_page()
+        try:
+            page.goto(url, timeout=60000)
+            time.sleep(5)
 
-        max_clicks = 10
-        clicks = 0
+            # Get total number of results
+            max_results = 0
+            showing_div = page.query_selector("div.TopResults_showing__mNXH8")
+            if showing_div:
+                text_parts = showing_div.inner_text().split()
+                for part in text_parts:
+                    if part.isdigit():
+                        max_results = int(part)
 
-        while clicks < max_clicks:
-            try:
-                show_more_btn = driver.find_element(
-                    By.CSS_SELECTOR,
-                    "div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x"
-                )
-                driver.execute_script("arguments[0].scrollIntoView();", show_more_btn)
-                driver.execute_script("arguments[0].click();", show_more_btn)
-                clicks += 1
-                time.sleep(10)
-            except Exception:
-                break
+            # Calculate how many times to click
+            if max_results > 0 and max_results > initial_results:
+                max_clicks = math.ceil((max_results - initial_results) / results_per_click)
+            else:
+                max_clicks = 0
 
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        result_divs = soup.find_all("div", class_=lambda x: x and x.startswith("TopResults_resultCardContent"))
+            # Click the Show More button if needed
+            clicks = 0
+            while clicks < max_clicks:
+                try:
+                    btn = page.query_selector("div.TopResults_showMoreSection__FLSrW button.styles_button__KagQX.styles_md__2wnXO.styles_primary___7R_x")
+                    if btn:
+                        btn.scroll_into_view_if_needed()
+                        btn.click()
+                        clicks += 1
+                        time.sleep(10)
+                    else:
+                        break
+                except:
+                    break
 
-        links = []
-        for div in result_divs:
-            a_tag = div.find("a", href=True)
-            if a_tag:
-                links.append(a_tag["href"])
+            # Extract links
+            html = page.content()
+            soup = BeautifulSoup(html, "html.parser")
+            result_divs = soup.find_all("div", class_=lambda x: x and x.startswith("TopResults_resultCardContent"))
+            for div in result_divs:
+                a_tag = div.find("a", href=True)
+                if a_tag:
+                    links.append(a_tag["href"])
 
-        return jsonify([{"links": links}])
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            browser.close()
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        driver.quit()
+    return jsonify({"links": links})
 
-# Support dynamic port for Render
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
